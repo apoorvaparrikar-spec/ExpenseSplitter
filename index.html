@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+  <title>Trip Splitter</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧳</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+</head>
+<body>
+  <header class="topbar">
+    <label for="tripSelect" class="sr-only">Current trip</label>
+    <select id="tripSelect" class="trip-select"></select>
+    <button type="button" class="icon-btn" data-action="new-trip" aria-label="New trip" title="New trip">＋</button>
+  </header>
+
+  <main>
+    <section id="view-expenses" class="view" aria-label="Expenses"></section>
+    <section id="view-balances" class="view" aria-label="Balances" hidden></section>
+    <section id="view-trip" class="view" aria-label="Trip settings" hidden></section>
+  </main>
+
+  <button type="button" id="fabScan" class="fab fab-scan" data-action="scan" aria-label="Scan a bill or UPI screenshot" title="Scan a bill or UPI screenshot">📷</button>
+  <button type="button" id="fab" class="fab" data-action="add-expense" aria-label="Add expense">+</button>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button type="button" data-action="tab" data-tab="expenses"><span class="tab-ico" aria-hidden="true">🧾</span><span>Expenses</span></button>
+    <button type="button" data-action="tab" data-tab="balances"><span class="tab-ico" aria-hidden="true">⚖️</span><span>Balances</span></button>
+    <button type="button" data-action="tab" data-tab="trip"><span class="tab-ico" aria-hidden="true">🧳</span><span>Trip</span></button>
+  </nav>
+
+  <!-- Add / edit expense -->
+  <dialog id="expenseDialog" class="sheet">
+    <form id="expenseForm" class="dlg" novalidate autocomplete="off">
+      <div class="dlg-head">
+        <h2 id="expTitle">Add expense</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </div>
+      <div class="dlg-body">
+        <button type="button" class="btn scan-btn" id="scanBtn">📷 Scan bill or UPI screenshot</button>
+        <div id="scanPanel" class="scan-panel" hidden>
+          <img id="scanImg" alt="Scanned bill. Tap to enlarge">
+          <div class="scan-info">
+            <p id="scanMsg" class="scan-msg" aria-live="polite"></p>
+            <div class="progress" id="scanProg"><span></span></div>
+            <ul id="scanFound" class="scan-found"></ul>
+            <button type="button" class="btn small" id="scanAsPayment" hidden></button>
+            <details id="scanTextBox" hidden><summary>Text read from the image</summary><pre id="scanText"></pre></details>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>Description</span>
+          <input name="description" maxlength="80" placeholder="e.g. Dinner at the shack" enterkeyhint="next">
+        </label>
+
+        <div class="field-row">
+          <label class="field grow">
+            <span>Amount</span>
+            <input name="amount" inputmode="decimal" placeholder="0.00" enterkeyhint="done">
+          </label>
+          <label class="field">
+            <span>Currency</span>
+            <select name="currency"></select>
+          </label>
+        </div>
+
+        <div id="rateBox" class="rate-box" hidden>
+          <label class="field">
+            <span id="rateLabel">Rate</span>
+            <span class="input-with-btn">
+              <input name="rate" inputmode="decimal" placeholder="Exchange rate">
+              <button type="button" class="btn small" id="rateRefresh">Fetch</button>
+            </span>
+          </label>
+          <p class="hint" id="rateNote"></p>
+          <p class="hint strong" id="inrPreview"></p>
+        </div>
+
+        <div class="field-row">
+          <label class="field grow">
+            <span>Date</span>
+            <input type="date" name="date">
+          </label>
+          <label class="field grow">
+            <span>Paid by</span>
+            <select name="paidBy"></select>
+          </label>
+        </div>
+
+        <fieldset class="field">
+          <legend>Category</legend>
+          <p class="hint cat-hint" id="catHint" hidden>Pick the type. Taxi, auto or train → Transport; petrol or diesel → Fuel.</p>
+          <div class="chips">
+            <label class="chip"><input type="radio" name="category" value="Food"><span>🍽️ Food</span></label>
+            <label class="chip"><input type="radio" name="category" value="Transport"><span>🚕 Transport</span></label>
+            <label class="chip"><input type="radio" name="category" value="Fuel"><span>⛽ Fuel</span></label>
+            <label class="chip"><input type="radio" name="category" value="Stay"><span>🏨 Stay</span></label>
+            <label class="chip"><input type="radio" name="category" value="Activities"><span>🎯 Activities</span></label>
+            <label class="chip"><input type="radio" name="category" value="Other"><span>📦 Other</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="field">
+          <legend>Split</legend>
+          <div class="segmented">
+            <label><input type="radio" name="split" value="equal"><span>Equally</span></label>
+            <label><input type="radio" name="split" value="exact"><span>Exact amounts</span></label>
+          </div>
+          <div class="split-tools" id="splitTools">
+            <button type="button" class="btn-text" id="selAll">Select all</button>
+            <button type="button" class="btn-text" id="selNone">Clear</button>
+          </div>
+          <div id="splitRows" class="split-rows"></div>
+        </fieldset>
+      </div>
+      <div class="dlg-foot">
+        <p id="splitStatus" class="status" aria-live="polite"></p>
+        <div class="btn-row">
+          <button type="button" class="btn danger-outline" id="expDelete">Delete</button>
+          <button type="submit" class="btn primary grow" id="expSave">Save expense</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Record a payment (settlement) -->
+  <dialog id="paymentDialog" class="sheet">
+    <form id="paymentForm" class="dlg" novalidate autocomplete="off">
+      <div class="dlg-head">
+        <h2>Record a payment</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </div>
+      <div class="dlg-body">
+        <label class="field"><span>Who paid</span><select name="from"></select></label>
+        <label class="field"><span>Paid to</span><select name="to"></select></label>
+        <div class="field-row">
+          <label class="field grow"><span>Amount (₹)</span><input name="amount" inputmode="decimal" placeholder="0.00"></label>
+          <label class="field grow"><span>Date</span><input type="date" name="date"></label>
+        </div>
+        <p class="hint">Payments are recorded in ₹ and reduce what the payer owes.</p>
+      </div>
+      <div class="dlg-foot">
+        <p id="payStatus" class="status" aria-live="polite"></p>
+        <div class="btn-row"><button type="submit" class="btn primary grow" id="paySave">Save payment</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- New trip -->
+  <dialog id="tripDialog" class="sheet">
+    <form id="tripForm" class="dlg" novalidate autocomplete="off">
+      <div class="dlg-head">
+        <h2>New trip</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close">✕</button>
+      </div>
+      <div class="dlg-body">
+        <label class="field"><span>Trip name</span><input name="tripName" maxlength="60" placeholder="e.g. Goa weekend"></label>
+        <label class="field"><span>Default currency</span><select name="currency"></select></label>
+        <label class="field">
+          <span>People (one per line, or separated by commas)</span>
+          <textarea name="people" rows="5" placeholder="Asha&#10;Ravi&#10;Meera"></textarea>
+        </label>
+      </div>
+      <div class="dlg-foot">
+        <p id="tripStatus" class="status" aria-live="polite"></p>
+        <div class="btn-row"><button type="submit" class="btn primary grow">Create trip</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Generic confirm / choice -->
+  <dialog id="askDialog" class="small">
+    <div class="dlg">
+      <div class="dlg-head"><h2 id="askTitle"></h2></div>
+      <div class="dlg-body" id="askBody"></div>
+      <div class="dlg-foot"><div class="btn-row wrap" id="askButtons"></div></div>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <input type="file" id="importFile" accept="application/json,.json" hidden>
+  <input type="file" id="scanFile" accept="image/*" hidden>
+
+  <script src="money.js"></script>
+  <script src="sample.js"></script>
+  <script src="billparse.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
